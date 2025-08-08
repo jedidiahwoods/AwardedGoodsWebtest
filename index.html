@@ -20,17 +20,17 @@
   </div>
   <canvas id="scene"></canvas>
 
-  <!-- Load libraries FIRST (no defer so they block and finish before our code) -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/loaders/SVGLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"></script>
+  <!-- Load libraries FIRST from Cloudflare cdnjs (most reliable on locked-down networks) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/examples/js/controls/OrbitControls.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/examples/js/loaders/SVGLoader.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.min.js"></script>
 
   <!-- Our code runs AFTER libs are loaded -->
   <script>
-    // Safety check: bail early if THREE somehow didn’t load
+    // If THREE is still missing, your network is blocking this CDN too.
     if (!window.THREE) {
-      alert("Three.js failed to load. Try a hard refresh (Cmd/Ctrl+Shift+R).");
+      alert("Three.js failed to load from cdnjs. Try a hard refresh or tell me and I’ll inline/vendor the files.");
       throw new Error("THREE not loaded");
     }
 
@@ -60,13 +60,9 @@
 
     // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 2.0);
-    key.position.set(5,5,5);
-    scene.add(key);
+    const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(5,5,5); scene.add(key);
     const rim = new THREE.SpotLight(0xffe6a8, 1.7, 0, Math.PI/6, 0.3, 1.5);
-    rim.position.set(-6, 3, -4);
-    rim.target.position.set(0,0,0);
-    scene.add(rim, rim.target);
+    rim.position.set(-6, 3, -4); rim.target.position.set(0,0,0); scene.add(rim, rim.target);
 
     // Stars
     function createStarfield(count=2500, radius=80) {
@@ -85,8 +81,7 @@
       pts.renderOrder = -1;
       return pts;
     }
-    const stars = createStarfield();
-    scene.add(stars);
+    const stars = createStarfield(); scene.add(stars);
 
     // Background gradient plane
     const gradTex = new THREE.CanvasTexture((() => {
@@ -96,17 +91,11 @@
       ctx.fillStyle=grd; ctx.fillRect(0,0,2,2); return c;
     })());
     gradTex.colorSpace = THREE.SRGBColorSpace;
-    const bgPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(200,200),
-      new THREE.MeshBasicMaterial({ map:gradTex, depthWrite:false })
-    );
-    bgPlane.position.set(0,0,-50);
-    scene.add(bgPlane);
+    const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshBasicMaterial({ map:gradTex, depthWrite:false }));
+    bgPlane.position.set(0,0,-50); scene.add(bgPlane);
 
     // Group for logo / fallback
-    const group = new THREE.Group();
-    scene.add(group);
-
+    const group = new THREE.Group(); scene.add(group);
     const gold = new THREE.MeshStandardMaterial({ color:0xd4af37, metalness:1.0, roughness:0.25 });
 
     // Fallback cube (visible until SVG loads)
@@ -115,37 +104,29 @@
     group.add(fallback);
 
     // Load & extrude SVG
-    try {
-      const loader = new THREE.SVGLoader();
-      loader.load('./assets/logo.svg', (data) => {
-        console.log("SVG loaded, converting to shapes…");
-        const shapes = [];
-        data.paths.forEach(p => p.toShapes(true).forEach(s => shapes.push(s)));
-        if (shapes.length === 0) {
-          console.warn("No shapes generated from SVG (might be strokes-only). Keeping fallback cube.");
-          return;
-        }
-        const extrudeSettings = {
-          depth: 0.35,
-          bevelEnabled: true,
-          bevelThickness: 0.05,
-          bevelSize: 0.03,
-          bevelSegments: 3,
-          curveSegments: 12
-        };
-        const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
-        geometry.center();
-        const mesh = new THREE.Mesh(geometry, gold);
-        group.clear(); // remove fallback
-        group.add(mesh);
-        mesh.rotation.set(0.1, -0.2, 0);
-        console.log("SVG extruded and added to scene.");
-      }, undefined, (err) => {
-        console.error("SVG load error:", err);
-      });
-    } catch (e) {
-      console.error("SVGLoader error:", e);
-    }
+    const loader = new THREE.SVGLoader();
+    loader.load('./assets/logo.svg', (data) => {
+      console.log("SVG loaded, converting to shapes…");
+      const shapes = [];
+      data.paths.forEach(p => p.toShapes(true).forEach(s => shapes.push(s)));
+      if (shapes.length === 0) {
+        console.warn("No shapes from SVG (might be strokes-only). Keeping fallback cube.");
+        return;
+      }
+      const extrudeSettings = {
+        depth: 0.35, bevelEnabled: true,
+        bevelThickness: 0.05, bevelSize: 0.03,
+        bevelSegments: 3, curveSegments: 12
+      };
+      const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
+      geometry.center();
+      const mesh = new THREE.Mesh(geometry, gold);
+      group.clear(); group.add(mesh);
+      mesh.rotation.set(0.1, -0.2, 0);
+      console.log("SVG extruded and added to scene.");
+    }, undefined, (err) => {
+      console.error("SVG load error:", err);
+    });
 
     // Camera views
     const views = {
@@ -155,14 +136,12 @@
       left: new THREE.Vector3(-6,0,0.01),
       right: new THREE.Vector3(6,0,0.01)
     };
-
     function moveCameraTo(v, lookAt=new THREE.Vector3(0,0,0), dur=900) {
       new TWEEN.Tween(camera.position).to({x:v.x,y:v.y,z:v.z}, dur).easing(TWEEN.Easing.Cubic.InOut).start();
       const start = {x:controls.target.x, y:controls.target.y, z:controls.target.z};
       new TWEEN.Tween(start).to({x:lookAt.x, y:lookAt.y, z:lookAt.z}, dur).easing(TWEEN.Easing.Cubic.InOut)
         .onUpdate(()=>controls.target.set(start.x,start.y,start.z)).start();
     }
-
     document.querySelectorAll('button[data-view]').forEach(btn=>{
       btn.addEventListener('click', ()=> moveCameraTo(views[btn.dataset.view]));
     });
@@ -176,15 +155,13 @@
     // Animate
     function animate(){
       stars.rotation.y += 0.0008;
-      fallback.rotation.y += 0.01; // see this spin until SVG replaces it
+      fallback.rotation.y += 0.01; // spins until SVG replaces it
       TWEEN.update();
       controls.update();
       renderer.render(scene,camera);
       requestAnimationFrame(animate);
     }
     animate();
-
-    console.log("Scene initialized.");
   </script>
 </body>
 </html>
