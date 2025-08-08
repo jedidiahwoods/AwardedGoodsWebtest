@@ -20,165 +20,167 @@
   </div>
   <canvas id="scene"></canvas>
 
-  <!-- Libraries (deferred so they load before our code runs) -->
+  <!-- Libraries (load first, in order) -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/controls/OrbitControls.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.165.0/examples/js/loaders/SVGLoader.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js" defer></script>
 
   <!-- Our code -->
-  <script defer>
-    console.log("Booting THREE version:", THREE && THREE.REVISION);
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      console.log("Booting THREE version:", THREE.REVISION);
 
-    // Renderer
-    const canvas = document.getElementById('scene');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+      // Renderer
+      const canvas = document.getElementById('scene');
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
 
-    // Scene & Camera
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
-    camera.position.set(0, 0, 8);
+      // Scene & Camera
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
+      camera.position.set(0, 0, 8);
 
-    // Controls
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enablePan = false;
-    controls.minDistance = 3;
-    controls.maxDistance = 20;
+      // Controls
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.enablePan = false;
+      controls.minDistance = 3;
+      controls.maxDistance = 20;
 
-    // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 2.0);
-    key.position.set(5,5,5);
-    scene.add(key);
-    const rim = new THREE.SpotLight(0xffe6a8, 1.7, 0, Math.PI/6, 0.3, 1.5);
-    rim.position.set(-6, 3, -4);
-    rim.target.position.set(0,0,0);
-    scene.add(rim, rim.target);
+      // Lights
+      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+      const key = new THREE.DirectionalLight(0xffffff, 2.0);
+      key.position.set(5,5,5);
+      scene.add(key);
+      const rim = new THREE.SpotLight(0xffe6a8, 1.7, 0, Math.PI/6, 0.3, 1.5);
+      rim.position.set(-6, 3, -4);
+      rim.target.position.set(0,0,0);
+      scene.add(rim, rim.target);
 
-    // Stars
-    function createStarfield(count=2500, radius=80) {
-      const geom = new THREE.BufferGeometry();
-      const pos = new Float32Array(count*3);
-      for (let i=0;i<count;i++){
-        const r = radius * Math.cbrt(Math.random());
-        const th = Math.random()*Math.PI*2;
-        const ph = Math.acos(2*Math.random()-1);
-        pos[i*3+0] = r*Math.sin(ph)*Math.cos(th);
-        pos[i*3+1] = r*Math.sin(ph)*Math.sin(th);
-        pos[i*3+2] = r*Math.cos(ph);
-      }
-      geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
-      const pts = new THREE.Points(geom, new THREE.PointsMaterial({ size:0.05, sizeAttenuation:true }));
-      pts.renderOrder = -1;
-      return pts;
-    }
-    const stars = createStarfield();
-    scene.add(stars);
-
-    // Background gradient plane
-    const gradTex = new THREE.CanvasTexture((() => {
-      const c = document.createElement('canvas'); c.width=2; c.height=2;
-      const ctx = c.getContext('2d'); const grd = ctx.createLinearGradient(0,0,2,2);
-      grd.addColorStop(0,'#0a0a1a'); grd.addColorStop(1,'#1a0033');
-      ctx.fillStyle=grd; ctx.fillRect(0,0,2,2); return c;
-    })());
-    gradTex.colorSpace = THREE.SRGBColorSpace;
-    const bgPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(200,200),
-      new THREE.MeshBasicMaterial({ map:gradTex, depthWrite:false })
-    );
-    bgPlane.position.set(0,0,-50);
-    scene.add(bgPlane);
-
-    // Group for logo / fallback
-    const group = new THREE.Group();
-    scene.add(group);
-
-    const gold = new THREE.MeshStandardMaterial({ color:0xd4af37, metalness:1.0, roughness:0.25 });
-
-    // Fallback cube (visible until SVG loads)
-    const fallback = new THREE.Mesh(new THREE.BoxGeometry(2,2,0.5), gold);
-    fallback.rotation.set(0.3, -0.4, 0.1);
-    group.add(fallback);
-
-    // Load & extrude SVG
-    try {
-      const loader = new THREE.SVGLoader();
-      loader.load('./assets/logo.svg', (data) => {
-        console.log("SVG loaded, converting to shapes…");
-        const shapes = [];
-        data.paths.forEach(p => p.toShapes(true).forEach(s => shapes.push(s)));
-        if (shapes.length === 0) {
-          console.warn("No shapes generated from SVG (might be strokes-only). Keeping fallback cube.");
-          return;
+      // Stars
+      function createStarfield(count=2500, radius=80) {
+        const geom = new THREE.BufferGeometry();
+        const pos = new Float32Array(count*3);
+        for (let i=0;i<count;i++){
+          const r = radius * Math.cbrt(Math.random());
+          const th = Math.random()*Math.PI*2;
+          const ph = Math.acos(2*Math.random()-1);
+          pos[i*3+0] = r*Math.sin(ph)*Math.cos(th);
+          pos[i*3+1] = r*Math.sin(ph)*Math.sin(th);
+          pos[i*3+2] = r*Math.cos(ph);
         }
-        const extrudeSettings = {
-          depth: 0.35,
-          bevelEnabled: true,
-          bevelThickness: 0.05,
-          bevelSize: 0.03,
-          bevelSegments: 3,
-          curveSegments: 12
-        };
-        const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
-        geometry.center();
-        const mesh = new THREE.Mesh(geometry, gold);
-        group.clear(); // remove fallback
-        group.add(mesh);
-        mesh.rotation.set(0.1, -0.2, 0);
-        console.log("SVG extruded and added to scene.");
-      }, undefined, (err) => {
-        console.error("SVG load error:", err);
+        geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
+        const pts = new THREE.Points(geom, new THREE.PointsMaterial({ size:0.05, sizeAttenuation:true }));
+        pts.renderOrder = -1;
+        return pts;
+      }
+      const stars = createStarfield();
+      scene.add(stars);
+
+      // Background gradient plane
+      const gradTex = new THREE.CanvasTexture((() => {
+        const c = document.createElement('canvas'); c.width=2; c.height=2;
+        const ctx = c.getContext('2d'); const grd = ctx.createLinearGradient(0,0,2,2);
+        grd.addColorStop(0,'#0a0a1a'); grd.addColorStop(1,'#1a0033');
+        ctx.fillStyle=grd; ctx.fillRect(0,0,2,2); return c;
+      })());
+      gradTex.colorSpace = THREE.SRGBColorSpace;
+      const bgPlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(200,200),
+        new THREE.MeshBasicMaterial({ map:gradTex, depthWrite:false })
+      );
+      bgPlane.position.set(0,0,-50);
+      scene.add(bgPlane);
+
+      // Group for logo / fallback
+      const group = new THREE.Group();
+      scene.add(group);
+
+      const gold = new THREE.MeshStandardMaterial({ color:0xd4af37, metalness:1.0, roughness:0.25 });
+
+      // Fallback cube (visible until SVG loads)
+      const fallback = new THREE.Mesh(new THREE.BoxGeometry(2,2,0.5), gold);
+      fallback.rotation.set(0.3, -0.4, 0.1);
+      group.add(fallback);
+
+      // Load & extrude SVG
+      try {
+        const loader = new THREE.SVGLoader();
+        loader.load('./assets/logo.svg', (data) => {
+          console.log("SVG loaded, converting to shapes…");
+          const shapes = [];
+          data.paths.forEach(p => p.toShapes(true).forEach(s => shapes.push(s)));
+          if (shapes.length === 0) {
+            console.warn("No shapes generated from SVG (might be strokes-only). Keeping fallback cube.");
+            return;
+          }
+          const extrudeSettings = {
+            depth: 0.35,
+            bevelEnabled: true,
+            bevelThickness: 0.05,
+            bevelSize: 0.03,
+            bevelSegments: 3,
+            curveSegments: 12
+          };
+          const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
+          geometry.center();
+          const mesh = new THREE.Mesh(geometry, gold);
+          group.clear(); // remove fallback
+          group.add(mesh);
+          mesh.rotation.set(0.1, -0.2, 0);
+          console.log("SVG extruded and added to scene.");
+        }, undefined, (err) => {
+          console.error("SVG load error:", err);
+        });
+      } catch (e) {
+        console.error("SVGLoader error:", e);
+      }
+
+      // Camera views
+      const views = {
+        home: new THREE.Vector3(0,0,8),
+        top: new THREE.Vector3(0,6,0.01),
+        bottom: new THREE.Vector3(0,-6,0.01),
+        left: new THREE.Vector3(-6,0,0.01),
+        right: new THREE.Vector3(6,0,0.01)
+      };
+
+      function moveCameraTo(v, lookAt=new THREE.Vector3(0,0,0), dur=900) {
+        new TWEEN.Tween(camera.position).to({x:v.x,y:v.y,z:v.z}, dur).easing(TWEEN.Easing.Cubic.InOut).start();
+        const start = {x:controls.target.x, y:controls.target.y, z:controls.target.z};
+        new TWEEN.Tween(start).to({x:lookAt.x, y:lookAt.y, z:lookAt.z}, dur).easing(TWEEN.Easing.Cubic.InOut)
+          .onUpdate(()=>controls.target.set(start.x,start.y,start.z)).start();
+      }
+
+      document.querySelectorAll('button[data-view]').forEach(btn=>{
+        btn.addEventListener('click', ()=> moveCameraTo(views[btn.dataset.view]));
       });
-    } catch (e) {
-      console.error("SVGLoader error:", e);
-    }
 
-    // Camera views
-    const views = {
-      home: new THREE.Vector3(0,0,8),
-      top: new THREE.Vector3(0,6,0.01),
-      bottom: new THREE.Vector3(0,-6,0.01),
-      left: new THREE.Vector3(-6,0,0.01),
-      right: new THREE.Vector3(6,0,0.01)
-    };
+      // Resize
+      window.addEventListener('resize', ()=>{
+        const w = window.innerWidth, h = window.innerHeight;
+        renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+      });
 
-    function moveCameraTo(v, lookAt=new THREE.Vector3(0,0,0), dur=900) {
-      new TWEEN.Tween(camera.position).to({x:v.x,y:v.y,z:v.z}, dur).easing(TWEEN.Easing.Cubic.InOut).start();
-      const start = {x:controls.target.x, y:controls.target.y, z:controls.target.z};
-      new TWEEN.Tween(start).to({x:lookAt.x, y:lookAt.y, z:lookAt.z}, dur).easing(TWEEN.Easing.Cubic.InOut)
-        .onUpdate(()=>controls.target.set(start.x,start.y,start.z)).start();
-    }
+      // Animate
+      function animate(){
+        stars.rotation.y += 0.0008;
+        fallback.rotation.y += 0.01; // see this spin until SVG replaces it
+        TWEEN.update();
+        controls.update();
+        renderer.render(scene,camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
 
-    document.querySelectorAll('button[data-view]').forEach(btn=>{
-      btn.addEventListener('click', ()=> moveCameraTo(views[btn.dataset.view]));
+      console.log("Scene initialized.");
     });
-
-    // Resize
-    window.addEventListener('resize', ()=>{
-      const w = window.innerWidth, h = window.innerHeight;
-      renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
-    });
-
-    // Animate
-    function animate(){
-      stars.rotation.y += 0.0008;
-      fallback.rotation.y += 0.01; // see this spin until SVG replaces it
-      TWEEN.update();
-      controls.update();
-      renderer.render(scene,camera);
-      requestAnimationFrame(animate);
-    }
-    animate();
-
-    console.log("Scene initialized.");
   </script>
 </body>
 </html>
