@@ -3,9 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Awarded Goods — 3D</title>
+  <title>Awarded Goods — 3D (No-CDN Fallback)</title>
   <link rel="icon" href="data:;base64,iVBORw0KGgo=">
   <link rel="stylesheet" href="./style.css"/>
+  <style>
+    /* Extra tiny tweaks for this fallback */
+    #scene { background: #000; }
+    #logoWrap {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) perspective(1000px);
+      width: clamp(220px, 30vw, 520px);
+      height: clamp(220px, 30vw, 520px);
+      display: grid;
+      place-items: center;
+      pointer-events: none; /* buttons/mouse drag handled on overlay */
+    }
+    #logo3d {
+      width: 100%;
+      height: 100%;
+      transform-style: preserve-3d;
+      filter: drop-shadow(0 10px 30px rgba(212,175,55,0.35));
+      will-change: transform;
+    }
+    /* Transparent overlay to capture drag */
+    #dragger {
+      position: fixed; inset: 0; 
+      cursor: grab; 
+      background: transparent;
+    }
+    #dragger:active { cursor: grabbing; }
+  </style>
 </head>
 <body>
   <div id="ui">
@@ -18,147 +46,138 @@
       <button data-view="home" class="primary">Home</button>
     </div>
   </div>
+
+  <!-- Starfield canvas -->
   <canvas id="scene"></canvas>
 
-  <!-- Load libraries FIRST from Cloudflare cdnjs (most reliable on locked-down networks) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/examples/js/controls/OrbitControls.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r165/examples/js/loaders/SVGLoader.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.min.js"></script>
+  <!-- 3D-ish logo (CSS transforms, no libs) -->
+  <div id="logoWrap">
+    <img id="logo3d" src="./assets/logo.svg" alt="Awarded Goods Logo"/>
+  </div>
 
-  <!-- Our code runs AFTER libs are loaded -->
+  <!-- Transparent overlay to capture drag inputs -->
+  <div id="dragger"></div>
+
   <script>
-    // If THREE is still missing, your network is blocking this CDN too.
-    if (!window.THREE) {
-      alert("Three.js failed to load from cdnjs. Try a hard refresh or tell me and I’ll inline/vendor the files.");
-      throw new Error("THREE not loaded");
-    }
-
-    console.log("Booting THREE version:", THREE.REVISION);
-
-    // Renderer
+    /* === Starfield (Canvas 2D) === */
     const canvas = document.getElementById('scene');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
-
-    // Scene & Camera
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 200);
-    camera.position.set(0, 0, 8);
-
-    // Controls
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enablePan = false;
-    controls.minDistance = 3;
-    controls.maxDistance = 20;
-
-    // Lights
-    scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 2.0); key.position.set(5,5,5); scene.add(key);
-    const rim = new THREE.SpotLight(0xffe6a8, 1.7, 0, Math.PI/6, 0.3, 1.5);
-    rim.position.set(-6, 3, -4); rim.target.position.set(0,0,0); scene.add(rim, rim.target);
-
-    // Stars
-    function createStarfield(count=2500, radius=80) {
-      const geom = new THREE.BufferGeometry();
-      const pos = new Float32Array(count*3);
-      for (let i=0;i<count;i++){
-        const r = radius * Math.cbrt(Math.random());
-        const th = Math.random()*Math.PI*2;
-        const ph = Math.acos(2*Math.random()-1);
-        pos[i*3+0] = r*Math.sin(ph)*Math.cos(th);
-        pos[i*3+1] = r*Math.sin(ph)*Math.sin(th);
-        pos[i*3+2] = r*Math.cos(ph);
-      }
-      geom.setAttribute('position', new THREE.BufferAttribute(pos,3));
-      const pts = new THREE.Points(geom, new THREE.PointsMaterial({ size:0.05, sizeAttenuation:true }));
-      pts.renderOrder = -1;
-      return pts;
+    const ctx = canvas.getContext('2d');
+    let w, h, dpr;
+    function resize() {
+      w = window.innerWidth; h = window.innerHeight; dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
-    const stars = createStarfield(); scene.add(stars);
+    window.addEventListener('resize', resize); resize();
 
-    // Background gradient plane
-    const gradTex = new THREE.CanvasTexture((() => {
-      const c = document.createElement('canvas'); c.width=2; c.height=2;
-      const ctx = c.getContext('2d'); const grd = ctx.createLinearGradient(0,0,2,2);
-      grd.addColorStop(0,'#0a0a1a'); grd.addColorStop(1,'#1a0033');
-      ctx.fillStyle=grd; ctx.fillRect(0,0,2,2); return c;
-    })());
-    gradTex.colorSpace = THREE.SRGBColorSpace;
-    const bgPlane = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshBasicMaterial({ map:gradTex, depthWrite:false }));
-    bgPlane.position.set(0,0,-50); scene.add(bgPlane);
+    // Generate stars
+    const STAR_COUNT = 1400;
+    const stars = new Array(STAR_COUNT).fill(0).map(() => ({
+      x: (Math.random() - 0.5) * 2,
+      y: (Math.random() - 0.5) * 2,
+      z: Math.random(),
+      s: Math.random() * 1.4 + 0.2
+    }));
 
-    // Group for logo / fallback
-    const group = new THREE.Group(); scene.add(group);
-    const gold = new THREE.MeshStandardMaterial({ color:0xd4af37, metalness:1.0, roughness:0.25 });
+    function renderStars(t) {
+      ctx.clearRect(0, 0, w, h);
+      // gradient background for "nebula"
+      const g = ctx.createLinearGradient(0,0,w,h);
+      g.addColorStop(0, '#0a0a1a');
+      g.addColorStop(1, '#1a0033');
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,w,h);
 
-    // Fallback cube (visible until SVG loads)
-    const fallback = new THREE.Mesh(new THREE.BoxGeometry(2,2,0.5), gold);
-    fallback.rotation.set(0.3, -0.4, 0.1);
-    group.add(fallback);
+      ctx.save();
+      ctx.translate(w/2, h/2);
 
-    // Load & extrude SVG
-    const loader = new THREE.SVGLoader();
-    loader.load('./assets/logo.svg', (data) => {
-      console.log("SVG loaded, converting to shapes…");
-      const shapes = [];
-      data.paths.forEach(p => p.toShapes(true).forEach(s => shapes.push(s)));
-      if (shapes.length === 0) {
-        console.warn("No shapes from SVG (might be strokes-only). Keeping fallback cube.");
-        return;
+      const rot = t * 0.00005;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+
+      for (const st of stars) {
+        // simple "orbit"
+        const rx = st.x * cos - st.y * sin;
+        const ry = st.x * sin + st.y * cos;
+        const depth = (st.z * 0.9 + 0.1);
+        const sx = rx * w * 0.45 * depth;
+        const sy = ry * h * 0.45 * depth;
+        const alpha = 0.25 + (1 - depth) * 0.75;
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(sx, sy, st.s, 0, Math.PI * 2);
+        ctx.fill();
       }
-      const extrudeSettings = {
-        depth: 0.35, bevelEnabled: true,
-        bevelThickness: 0.05, bevelSize: 0.03,
-        bevelSegments: 3, curveSegments: 12
-      };
-      const geometry = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
-      geometry.center();
-      const mesh = new THREE.Mesh(geometry, gold);
-      group.clear(); group.add(mesh);
-      mesh.rotation.set(0.1, -0.2, 0);
-      console.log("SVG extruded and added to scene.");
-    }, undefined, (err) => {
-      console.error("SVG load error:", err);
-    });
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
 
-    // Camera views
-    const views = {
-      home: new THREE.Vector3(0,0,8),
-      top: new THREE.Vector3(0,6,0.01),
-      bottom: new THREE.Vector3(0,-6,0.01),
-      left: new THREE.Vector3(-6,0,0.01),
-      right: new THREE.Vector3(6,0,0.01)
+    /* === Logo 3D-like interaction (CSS transforms) === */
+    const logo = document.getElementById('logo3d');
+    let rotX = 10, rotY = -12; // degrees
+    let targetX = rotX, targetY = rotY;
+
+    function applyTransform() {
+      // subtle “extrusion” illusion with 3D rotate and scale
+      logo.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+    }
+    applyTransform();
+
+    // Buttons move “camera” to presets
+    const presets = {
+      home:  { x: 10,  y: -12 },
+      top:   { x: 55,  y: 0    },
+      bottom:{ x: -35, y: 0    },
+      left:  { x: 0,   y: -60  },
+      right: { x: 0,   y: 60   }
     };
-    function moveCameraTo(v, lookAt=new THREE.Vector3(0,0,0), dur=900) {
-      new TWEEN.Tween(camera.position).to({x:v.x,y:v.y,z:v.z}, dur).easing(TWEEN.Easing.Cubic.InOut).start();
-      const start = {x:controls.target.x, y:controls.target.y, z:controls.target.z};
-      new TWEEN.Tween(start).to({x:lookAt.x, y:lookAt.y, z:lookAt.z}, dur).easing(TWEEN.Easing.Cubic.InOut)
-        .onUpdate(()=>controls.target.set(start.x,start.y,start.z)).start();
-    }
-    document.querySelectorAll('button[data-view]').forEach(btn=>{
-      btn.addEventListener('click', ()=> moveCameraTo(views[btn.dataset.view]));
+    document.querySelectorAll('button[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = presets[btn.dataset.view] || presets.home;
+        targetX = p.x; targetY = p.y;
+      });
     });
 
-    // Resize
-    window.addEventListener('resize', ()=>{
-      const w = window.innerWidth, h = window.innerHeight;
-      renderer.setSize(w,h); camera.aspect = w/h; camera.updateProjectionMatrix();
+    // Drag to rotate
+    const dragger = document.getElementById('dragger');
+    let dragging = false, lastX = 0, lastY = 0;
+    dragger.addEventListener('mousedown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+    window.addEventListener('mouseup', () => dragging = false);
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      targetY += dx * 0.2;   // yaw
+      targetX -= dy * 0.2;   // pitch
     });
 
-    // Animate
-    function animate(){
-      stars.rotation.y += 0.0008;
-      fallback.rotation.y += 0.01; // spins until SVG replaces it
-      TWEEN.update();
-      controls.update();
-      renderer.render(scene,camera);
+    // Touch support
+    dragger.addEventListener('touchstart', e => {
+      if (!e.touches[0]) return; 
+      dragging = true; const t = e.touches[0]; lastX = t.clientX; lastY = t.clientY;
+    }, {passive:true});
+    window.addEventListener('touchend', () => dragging = false, {passive:true});
+    window.addEventListener('touchmove', e => {
+      if (!dragging || !e.touches[0]) return;
+      const t = e.touches[0];
+      const dx = t.clientX - lastX;
+      const dy = t.clientY - lastY;
+      lastX = t.clientX; lastY = t.clientY;
+      targetY += dx * 0.2;
+      targetX -= dy * 0.2;
+    }, {passive:true});
+
+    // Smoothly interpolate toward targets
+    function animate(t=0) {
+      renderStars(t);
+
+      // ease toward target rotation
+      rotX += (targetX - rotX) * 0.1;
+      rotY += (targetY - rotY) * 0.1;
+      applyTransform();
+
       requestAnimationFrame(animate);
     }
     animate();
